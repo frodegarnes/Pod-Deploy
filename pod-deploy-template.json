@@ -23,7 +23,8 @@
         "VCSAInstaller": "VMware-VCSA-all-6.0.0-3634788",
         "ESXiAppliance": "ESXi\\Nested_ESXi6.x_Appliance_Template_v5.ova",
         "NSXAppliance" : "NSX\\VMware-NSX-Manager-6.2.4-4292526.ova",
-        "vRAAppliance" : "vRA\\VMware-vR-Appliance-7.2.0.381-4660246_OVF10.ova"
+        "vRAAppliance" : "vRA\\VMware-vR-Appliance-7.2.0.381-4660246_OVF10.ova",
+		"vROpsAppliance": "vROPS\\vRealize-Operations-Manager-Appliance-6.6.1.6163035_OVF10.ova"
     },
     "esxi": {
         "hosts": [
@@ -87,5 +88,14 @@
             "startIp": "192.168.201.30",
             "endIp": "192.168.201.39"
         }
+    },
+    "vROPS": {
+        "name": "pod-201-vrops",
+        "ip": "192.168.201.14",
+        "hostname": "192.168.201.15",
+        "rootPassword": "VMware1!",
+		"deploymentSize": "xsmall",
+		"ipprotocol": "IPv4",
+        "timezone": "Etc/UTC",
     }
 }
