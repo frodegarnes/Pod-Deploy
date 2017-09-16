@@ -8,7 +8,8 @@ param(
 	[switch]$configureVSAN,
 	[switch]$deployNSXManager,
 	[switch]$configureNSX,
-	[switch]$deployvRAAppliance
+	[switch]$deployvRAAppliance,
+	[switch]$deployvROPSAppliance
 )
 Get-Module -ListAvailable VMware*,PowerNSX | Import-Module
 if ( !(Get-Module -Name VMware.VimAutomation.Core -ErrorAction SilentlyContinue) ) {
@@ -19,6 +20,7 @@ if ( !(Get-Module -Name VMware.VimAutomation.Core -ErrorAction SilentlyContinue)
 # Rawlinson Riviera http://www.punchingclouds.com/2016/03/24/vmware-virtual-san-automated-deployments-powercli/
 # Brian Graf http://www.vtagion.com/automatically-deploy-nsx-connect-vcenter/
 # Anthony Burke https://networkinferno.net/license-nsx-via-automation-with-powercli
+# Modified with vrops by Frode Garnes VMworld Hackathon 2017
 
 # Get the folder location
 $ScriptLocation = Split-Path -Parent $PSCommandPath
@@ -31,6 +33,7 @@ $VCSAInstaller  = "$($ScriptLocation)\$($podConfig.sources.VCSAInstaller)"
 $ESXiAppliance  = "$($ScriptLocation)\$($podConfig.sources.ESXiAppliance)"
 $NSXAppliance   = "$($ScriptLocation)\$($podConfig.sources.NSXAppliance)"
 $vRAAppliance   = "$($ScriptLocation)\$($podConfig.sources.vRAAppliance)"
+$vROPSAppliance = "$($ScriptLocation)\$($podConfig.sources.vROpsAppliance)"
 
 # Log File
 $verboseLogFile = "pod-deploy.log"
@@ -538,6 +541,44 @@ if($configureNSX) {
 # 	Write-Log "Powering on $vRAAppName"
 # 	Start-VM -Server $vCenter -VM $vm -Confirm:$false | Out-File -Append -LiteralPath $verboseLogFile
 # }
+
+if($deployvROPSAppliance) {
+	Write-Log "Deploying vRealize Operations Manager Appliance"
+	$VCSA = Get-VCSAConnection -vcsaName $podConfig.target.server -vcsaUser $podConfig.target.user -vcsaPassword $podConfig.target.password
+ 	$ovfConfig = Get-ovfConfiguration $vROpsAppliance
+	$Cluster = Get-Cluster -Name $podConfig.target.cluster -Server $VCSA
+	$Datastore = Get-Datastore -Name $podConfig.target.datastore -Server $VCSA
+    $VDS = $podConfig.vcsa.distributedSwitch
+    $vROPSName = $podConfig.vrops.name
+    $VMHost = Get-Cluster $Cluster | Get-VMHost | Sort MemoryGB | Select -first 1
+    $VDSPG = $podConfig.target.portgroup
+
+    try {
+        ## Try get vDS
+        ## Tosses an error if it cant locate vDS, but will try load standard switch
+        $PortGroup = Get-VDPortgroup -VDSwitch $VDS -Name $VDSPG -Server $VCSA
+    }
+    catch {
+        ## If fails load standard portgroup (lab setup did not include vDS)
+        $PortGroup = Get-vmHost $VMHost | Get-VirtualPortGroup -name $VDSPG
+    }
+	$Folder = Get-PodFolder -vcsaConnection $VCSA -folderPath $podConfig.target.folder
+
+	$ovfconfig.DeploymentOption.value = $podConfig.vrops.deploymentSize
+	$ovfConfig.vami.vRealize_Operations_Manager_Appliance.ip0.value = $podConfig.vrops.ip
+	$ovfConfig.vami.vRealize_Operations_Manager_Appliance.gateway.value = $podConfig.target.network.gateway
+	$ovfConfig.vami.vRealize_Operations_Manager_Appliance.netmask0.value = $podConfig.target.network.netmask
+	$ovfConfig.vami.vRealize_Operations_Manager_Appliance.DNS.value = $podConfig.target.network.dns
+	$ovfconfig.NetworkMapping.Network_1.value = $pPortGroup
+	$ovfconfig.IpAssignment.IpProtocol.value = $podConfig.target.network.ipprotocol
+	$ovfconfig.common.vamitimezone.value = $podConfig.target.network.timezone
+	
+	$vROPSVM = Import-VApp -Server $pVCSA -VMHost $VMHost -Source $vROpsAppliance -ovfConfiguration $ovfConfig -Name $vROPSName -Location $Cluster -Datastore $Datastore -DiskStorageFormat thin
+ 	Write-Log "Moving $vROPSVM to $Folder"
+ 	Get-VM -Name $vROPSName | Move-VM -Destination $Folder | Out-File -Append -LiteralPath $verboseLogFile
+ 	Write-Log "Powering on $vROPSName"
+ 	Start-VM -Server $vCenter -VM $vROPSName -Confirm:$false | Out-File -Append -LiteralPath $verboseLogFile
+}
 
 Write-Log "Disconnecting from vCenter Servers"
 Close-VCSAConnection
